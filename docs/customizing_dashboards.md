@@ -77,8 +77,9 @@ which are specified through the `.with_options` class method:
 
 **Field::BelongsTo**
 
-`:order` - Specifies the order of the dropdown menu, can be ordered by more
-than one column. e.g.: `"name, email DESC"`.
+`:order` - Specifies the column used to order the records. It will apply both in
+the table views and in the dropdown menu on the record forms.
+You can set multiple columns as well with direction. E.g.: `"name, email DESC"`.
 
 `:scope` - Specifies a custom scope inside a callable. Useful for preloading.
 Example: `.with_options(scope: -> { MyModel.includes(:rel).limit(5) })`
@@ -112,8 +113,8 @@ association `belongs_to :country`, from your model.
 
 **Field::HasMany**
 
-`:limit` - Set the number of resources to display in the show view. Default is
-`5`.
+`:limit` - The number of resources (paginated) to display in the show view. To disable pagination,
+set this to `0` or `false`. Default is `5`.
 
 `:sort_by` - What to sort the association by in the show view.
 
@@ -126,6 +127,10 @@ association `belongs_to :country`, from your model.
 `:class_name` (deprecated) - Specifies the name of the associated class.
 
 **Field::HasOne**
+
+`:order` - Specifies the column used to order the records. It will apply both in
+the table views and in the dropdown menu on the record forms.
+You can set multiple columns as well with direction. E.g.: `"name, email DESC"`.
 
 `:searchable` - Specify if the attribute should be considered when searching.
 Default is `false`.
@@ -217,14 +222,31 @@ objects to display as.
 
 **Field::Select**
 
-`:collection` - Specify the options shown on the select field. It accept either
-an array or an object responding to `:call`. Defaults to `[]`.
+`:collection` - The options available to select. The format is the same as for Rails's own [`options_for_select`](https://api.rubyonrails.org/classes/ActionView/Helpers/FormOptionsHelper.html#method-i-options_for_select).
+
+If the given value responds to `call`, this will be called and the result used instead. The call will receive an instance of the field as argument. For example:
+
+```ruby
+  confirmation: Field::Select.with_options(
+    collection: ->(field) {
+      person = field.resource
+      {
+        "no, #{person.name}" => "opt0",
+        "yes, #{person.name}" => "opt1",
+        "absolutely, #{person.name}" => "opt2",
+      }
+    },
+  )
+```
+
+Administrate will detect if the attribute is an `ActiveRecord::Enum` and extract the available options. Note that if a `collection` is provided it will take precedence.
+
+If no collection is provided and no enum can be detected, the list of options will be empty.
 
 `:searchable` - Specify if the attribute should be considered when searching.
 Default is `true`.
 
-`:include_blank` - Specifies if the select element to be rendered should include
-blank option. Default is `false`.
+`:include_blank` - Similar to [the option of the same name accepted by Rails helpers](https://api.rubyonrails.org/classes/ActionView/Helpers/FormOptionsHelper.html). If provided, a "blank" option will be added first to the list of options, with the value of `include_blank` as label.
 
 **Field::String**
 
@@ -249,6 +271,9 @@ Default is `true`.
 
 `:truncate` - Set the number of characters to display in the index view.
 Defaults to `50`.
+
+`:html_options` - Specify anchor tag attributes (e.g., `target="_blank"`).
+Defaults is `{}`.
 
 **Field::Password**
 

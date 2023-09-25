@@ -1,8 +1,9 @@
 module Administrate
   class Order
-    def initialize(attribute = nil, direction = nil)
+    def initialize(attribute = nil, direction = nil, association_attribute: nil)
       @attribute = attribute
       @direction = sanitize_direction(direction)
+      @association_attribute = association_attribute
     end
 
     def apply(relation)
@@ -12,7 +13,7 @@ module Administrate
       order = "#{relation.table_name}.#{attribute} #{direction}"
 
       return relation.reorder(Arel.sql(order)) if
-        relation.columns_hash.keys.include?(attribute.to_s)
+        column_exist?(relation, attribute)
 
       relation
     end
@@ -32,7 +33,7 @@ module Administrate
 
     private
 
-    attr_reader :attribute
+    attr_reader :attribute, :association_attribute
 
     def sanitize_direction(direction)
       %w[asc desc].include?(direction.to_s) ? direction.to_sym : :asc
@@ -51,11 +52,16 @@ module Administrate
     end
 
     def order_by_association(relation)
-      return order_by_count(relation) if has_many_attribute?(relation)
-
-      return order_by_id(relation) if belongs_to_attribute?(relation)
-
-      relation
+      case relation_type(relation)
+      when :has_many
+        order_by_count(relation)
+      when :belongs_to
+        order_by_belongs_to(relation)
+      when :has_one
+        order_by_has_one(relation)
+      else
+        relation
+      end
     end
 
     def order_by_count(relation)
@@ -67,16 +73,61 @@ module Administrate
         reorder(Arel.sql(query))
     end
 
+    def order_by_belongs_to(relation)
+      if ordering_by_association_column?(relation)
+        order_by_attribute(relation)
+      else
+        order_by_id(relation)
+      end
+    end
+
+    def order_by_has_one(relation)
+      if ordering_by_association_column?(relation)
+        order_by_attribute(relation)
+      else
+        order_by_association_id(relation)
+      end
+    end
+
+    def order_by_attribute(relation)
+      relation.joins(
+        attribute.to_sym,
+      ).reorder(Arel.sql(order_by_attribute_query))
+    end
+
     def order_by_id(relation)
-      relation.reorder("#{foreign_key(relation)} #{direction}")
+      relation.reorder(Arel.sql(order_by_id_query(relation)))
     end
 
-    def has_many_attribute?(relation)
-      reflect_association(relation).macro == :has_many
+    def order_by_association_id(relation)
+      relation.reorder(Arel.sql(order_by_association_id_query))
     end
 
-    def belongs_to_attribute?(relation)
-      reflect_association(relation).macro == :belongs_to
+    def ordering_by_association_column?(relation)
+      association_attribute &&
+        column_exist?(
+          reflect_association(relation).klass, association_attribute.to_sym
+        )
+    end
+
+    def column_exist?(table, column_name)
+      table.columns_hash.key?(column_name.to_s)
+    end
+
+    def order_by_id_query(relation)
+      "#{relation.table_name}.#{foreign_key(relation)} #{direction}"
+    end
+
+    def order_by_association_id_query
+      "#{association_table_name}.id #{direction}"
+    end
+
+    def order_by_attribute_query
+      "#{association_table_name}.#{association_attribute} #{direction}"
+    end
+
+    def relation_type(relation)
+      reflect_association(relation).macro
     end
 
     def reflect_association(relation)
@@ -85,6 +136,10 @@ module Administrate
 
     def foreign_key(relation)
       reflect_association(relation).foreign_key
+    end
+
+    def association_table_name
+      attribute.tableize
     end
   end
 end
